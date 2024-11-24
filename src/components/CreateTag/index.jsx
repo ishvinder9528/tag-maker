@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import Draggable from "react-draggable";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import QRCode from "react-qr-code"; // QR code library
+import QRCode from "react-qr-code";
 
 const CreateTag = () => {
   const [tagData, setTagData] = useState({
@@ -10,7 +10,7 @@ const CreateTag = () => {
     code: "",
     price: "",
   });
-  const [selectedElement, setSelectedElement] = useState(null); // Tracks selected text or QR code
+  const [selectedElement, setSelectedElement] = useState(null);
   const [fontSizes, setFontSizes] = useState({
     shopId: 16,
     code: 16,
@@ -19,12 +19,16 @@ const CreateTag = () => {
   const [previewData, setPreviewData] = useState(null);
   const [paperSize, setPaperSize] = useState({ width: 210, height: 297 }); // Default A4 size
   const [qrCodeData, setQrCodeData] = useState(null);
-  const [qrSize, setQrSize] = useState(100); // Initial QR code size
+  const [qrSize, setQrSize] = useState(100);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [customSize, setCustomSize] = useState({ width: "", height: "", unit: "mm" });
+  const [scale, setScale] = useState(1); // Scale factor for the preview box
 
   const paperSizes = [
     { label: "A4 (210 × 297 mm)", value: { width: 210, height: 297 } },
     { label: "Letter (8.5 × 11 in)", value: { width: 215.9, height: 279.4 } },
     { label: "Legal (8.5 × 14 in)", value: { width: 215.9, height: 355.6 } },
+    { label: "Custom", value: "custom" },
   ];
 
   const handleInputChange = (e) => {
@@ -37,12 +41,50 @@ const CreateTag = () => {
 
   const handlePaperSizeChange = (e) => {
     const selectedSize = paperSizes.find((size) => size.label === e.target.value);
-    setPaperSize(selectedSize.value);
+    if (selectedSize.value === "custom") {
+      setPaperSize(null); // Reset paper size
+      setCustomSize({ width: "", height: "", unit: "mm" }); // Clear custom size inputs
+    } else {
+      setPaperSize(selectedSize.value);
+    }
   };
 
+
+  const handleCustomSizeChange = (e) => {
+    const { name, value } = e.target;
+    setCustomSize((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const applyCustomSize = () => {
+    const width = parseFloat(customSize.width);
+    const height = parseFloat(customSize.height);
+    if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
+      alert("Please enter valid width and height values.");
+      return;
+    }
+
+    const conversionFactor =
+      customSize.unit === "in" ? 25.4 : customSize.unit === "px" ? 0.264583 : 1; // Convert inches or pixels to mm
+    setPaperSize({
+      width: width * conversionFactor,
+      height: height * conversionFactor,
+    });
+  };
+
+
   useEffect(() => {
+    if (paperSize) {
+      const previewBoxWidth = 400; // Fixed preview box width
+      const scaleFactor = previewBoxWidth / paperSize.width;
+      setScale(scaleFactor);
+    } else {
+      setScale(1); // Default scale when no paper size is selected
+    }
     setPreviewData({ ...tagData });
-  }, [tagData]);
+  }, [tagData, paperSize]);
 
   const handleGenerateQRCode = () => {
     setQrCodeData({
@@ -82,8 +124,18 @@ const CreateTag = () => {
     }));
   };
 
+  const preventOverlap = (data, nodeRef) => {
+    const rect = nodeRef.getBoundingClientRect();
+    // Add logic here to adjust the position dynamically if it overlaps with other elements
+    return data;
+  };
+
   const deselectElement = () => {
     setSelectedElement(null);
+  };
+
+  const toggleMaximize = () => {
+    setIsMaximized((prev) => !prev);
   };
 
   return (
@@ -134,6 +186,42 @@ const CreateTag = () => {
                 </option>
               ))}
             </select>
+            {paperSize === null && (
+              <div className="mt-3 flex items-center">
+
+                <div  className="flex flex-col gap-3">
+                  <Input
+                    type="number"
+                    placeholder="Width"
+                    name="width"
+                    value={customSize.width}
+                    onChange={handleCustomSizeChange}
+                    className="mr-2"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Height"
+                    name="height"
+                    value={customSize.height}
+                    onChange={handleCustomSizeChange}
+                    className="mr-2"
+                  />
+                  <select
+                    className="border px-2 py-1"
+                    name="unit"
+                    value={customSize.unit}
+                    onChange={handleCustomSizeChange}
+                  >
+                    <option value="mm">mm</option>
+                    <option value="in">in</option>
+                    <option value="px">px</option>
+                  </select>
+                </div>
+                <Button onClick={applyCustomSize} className="ml-2">
+                  Apply
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex justify-end">
@@ -142,21 +230,34 @@ const CreateTag = () => {
       </div>
 
       {/* Right Section */}
-      <div>
+      <div className="relative">
         <h1 className="text-2xl font-bold">Your Tag</h1>
+        <Button
+          onClick={toggleMaximize}
+          className="absolute top-0 right-0 mt-2 mr-2"
+        >
+          {isMaximized ? "Minimize" : "Maximize"}
+        </Button>
         <div
           id="printable-preview"
-          className="border border-gray-300 rounded-md mt-4 relative overflow-hidden bg-gray-100"
+          className={`border border-gray-300 rounded-md mt-4 relative overflow-hidden bg-gray-100 ${isMaximized ? "w-full h-full fixed inset-0 z-50" : ""
+            }`}
           style={{
-            width: `${paperSize.width}mm`,
-            height: `${paperSize.height}mm`,
+            width: isMaximized ? "100%" : paperSize ? `${paperSize.width * scale}px` : "400px",
+            height: isMaximized ? "100%" : paperSize ? `${paperSize.height * scale}px` : "auto",
+            transform: `scale(${isMaximized ? 1 : scale})`,
+            transformOrigin: "top left",
             position: "relative",
           }}
+
           onClick={(e) => e.stopPropagation()}
         >
           {previewData &&
             Object.entries(previewData).map(([key, value]) => (
-              <Draggable key={key}>
+              <Draggable
+                key={key}
+                onDrag={(e, data) => preventOverlap(data, e.target)}
+              >
                 <div
                   style={{
                     fontSize: `${fontSizes[key]}px`,
@@ -171,28 +272,6 @@ const CreateTag = () => {
                   }}
                 >
                   {value}
-                  {selectedElement === key && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "100%",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        background: "white",
-                        padding: "5px",
-                        display: "flex",
-                        gap: "5px",
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Button onClick={() => handleFontSizeChange(key, 2)}>
-                        +
-                      </Button>
-                      <Button onClick={() => handleFontSizeChange(key, -2)}>
-                        -
-                      </Button>
-                    </div>
-                  )}
                 </div>
               </Draggable>
             ))}
@@ -212,26 +291,6 @@ const CreateTag = () => {
                 }}
               >
                 <QRCode value={JSON.stringify(qrCodeData)} size={qrSize} />
-                {selectedElement === "qr" && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      background: "white",
-                      padding: "5px",
-                      display: "flex",
-                      gap: "5px",
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button onClick={() => setQrSize(qrSize + 10)}>+</Button>
-                    <Button onClick={() => setQrSize(Math.max(50, qrSize - 10))}>
-                      -
-                    </Button>
-                  </div>
-                )}
               </div>
             </Draggable>
           )}
